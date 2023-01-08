@@ -101,7 +101,7 @@ public class UserServices implements UserDetailsService {
     }
 
     public List<User> getAll() {
-        return userRepository.findAll();
+        return userRepository.findAllByOrderByIdDesc();
     }
 
     public boolean existByUsername(String username) {
