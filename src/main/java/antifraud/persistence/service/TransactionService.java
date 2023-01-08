@@ -86,7 +86,7 @@ public class TransactionService {
         var startDate = createTransactionDto.getDate().minusHours(1);
         var endDate = createTransactionDto.getDate();
 
-        var transactions = transactionHistoryRepository.findByDateBetween(startDate, endDate);
+        var transactions = transactionHistoryRepository.findByDateBetweenOrderByDateDesc(startDate, endDate);
 
         var allowedTrx = transactions
             .stream()
