@@ -12,6 +12,7 @@ import antifraud.dto.response.CreateTransactionResponseDto;
 import antifraud.dto.response.TrxFeedbackResponseDto;
 import antifraud.persistence.model.TransactionHistory;
 import antifraud.persistence.repository.TransactionHistoryRepository;
+import antifraud.persistence.repository.TransactionLimitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +35,7 @@ public class TransactionService {
     private final TransactionHistoryRepository transactionHistoryRepository;
 
     private final HttpServletRequest httpServletRequest;
+    private final TransactionLimitRepository transactionLimitRepository;
 
     @Autowired
     public TransactionService(
@@ -42,14 +44,15 @@ public class TransactionService {
         StolenCardService stolenCardService,
         TransactionLimitService transactionLimitService,
         TransactionHistoryRepository transactionHistoryRepository,
-        HttpServletRequest httpServletRequest
-    ) {
+        HttpServletRequest httpServletRequest,
+        TransactionLimitRepository transactionLimitRepository) {
         this.userServices = userServices;
         this.suspiciousIpService = suspiciousIpService;
         this.stolenCardService = stolenCardService;
         this.transactionLimitService = transactionLimitService;
         this.transactionHistoryRepository = transactionHistoryRepository;
         this.httpServletRequest = httpServletRequest;
+        this.transactionLimitRepository = transactionLimitRepository;
     }
 
     @Transactional
@@ -202,66 +205,7 @@ public class TransactionService {
         }
 
         var currentTrxValidity = transactionHistory.getTransactionResult();
-
-        if (currentTrxValidity.equals(TransactionResult.ALLOWED) && feedbackValidity.equals(TransactionResult.MANUAL_PROCESSING)) {
-            // ↓ max ALLOWED
-//            var trxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.ALLOWED);
-//            var newLimit = decreaseLimit(trxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(newLimit, TransactionLimitType.ALLOWED);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.DECREASE);
-        }
-
-        if (currentTrxValidity.equals(TransactionResult.ALLOWED) && feedbackValidity.equals(TransactionResult.PROHIBITED)) {
-            //↓ max ALLOWED
-//            var allowedTrxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.ALLOWED);
-//            var allowedLimit = decreaseLimit(allowedTrxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(allowedLimit, TransactionLimitType.ALLOWED);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.DECREASE);
-
-            //↓ max MANUAL
-//            var manualTrxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.MANUAL);
-//            var manualLimit = decreaseLimit(manualTrxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(manualLimit, TransactionLimitType.MANUAL);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.DECREASE);
-        }
-
-        if (currentTrxValidity.equals(TransactionResult.MANUAL_PROCESSING) && feedbackValidity.equals(TransactionResult.ALLOWED)) {
-            // ↑ max ALLOWED
-//            var trxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.ALLOWED);
-//            var newLimit = increaseLimit(trxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(newLimit, TransactionLimitType.ALLOWED);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.INCREASE);
-        }
-
-        if (currentTrxValidity.equals(TransactionResult.MANUAL_PROCESSING) && feedbackValidity.equals(TransactionResult.PROHIBITED)) {
-            // ↓ max MANUAL
-//            var trxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.MANUAL);
-//            var newLimit = decreaseLimit(trxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(newLimit, TransactionLimitType.MANUAL);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.DECREASE);
-        }
-
-        if (currentTrxValidity.equals(TransactionResult.PROHIBITED) && feedbackValidity.equals(TransactionResult.ALLOWED)) {
-            // ↑ max ALLOWED
-//            var allowedTrxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.ALLOWED);
-//            var allowedLimit = increaseLimit(allowedTrxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(allowedLimit, TransactionLimitType.ALLOWED);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.INCREASE);
-
-            // ↑ max MANUAL
-//            var manualTrxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.MANUAL);
-//            var manualLimit = increaseLimit(manualTrxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(manualLimit, TransactionLimitType.MANUAL);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.INCREASE);
-        }
-
-        if (currentTrxValidity.equals(TransactionResult.PROHIBITED) && feedbackValidity.equals(TransactionResult.MANUAL_PROCESSING)) {
-            // ↑ max MANUAL
-//            var manualTrxLimit = transactionLimitService.getLatestTransactionLimit(TransactionLimitType.MANUAL);
-//            var manualLimit = increaseLimit(manualTrxLimit.getLimit(), transactionHistory.getAmount());
-//            transactionLimitService.createNewTransactionLimit(manualLimit, TransactionLimitType.MANUAL);
-            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.INCREASE);
-        }
+        adjustTransactionLimit(transactionHistory, currentTrxValidity, feedbackValidity);
 
         transactionHistory.setFeedback(TransactionResult.valueOf(addTrxFeedbackDto.getFeedback()));
         var newTrxHistory = transactionHistoryRepository.saveAndFlush(transactionHistory);
@@ -308,5 +252,33 @@ public class TransactionService {
     private int decreaseLimit(double currentLimit, double trxValue) {
         var newLimit = (0.8 * currentLimit) - (0.2 * trxValue);
         return Double.valueOf(Math.ceil(newLimit)).intValue();
+    }
+
+    private void adjustTransactionLimit(TransactionHistory transactionHistory, TransactionResult currentTrxValidity, TransactionResult feedbackValidity) {
+        if (currentTrxValidity.equals(TransactionResult.ALLOWED) && feedbackValidity.equals(TransactionResult.MANUAL_PROCESSING)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.DECREASE);
+        }
+
+        if (currentTrxValidity.equals(TransactionResult.ALLOWED) && feedbackValidity.equals(TransactionResult.PROHIBITED)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.DECREASE);
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.DECREASE);
+        }
+
+        if (currentTrxValidity.equals(TransactionResult.MANUAL_PROCESSING) && feedbackValidity.equals(TransactionResult.ALLOWED)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.INCREASE);
+        }
+
+        if (currentTrxValidity.equals(TransactionResult.MANUAL_PROCESSING) && feedbackValidity.equals(TransactionResult.PROHIBITED)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.DECREASE);
+        }
+
+        if (currentTrxValidity.equals(TransactionResult.PROHIBITED) && feedbackValidity.equals(TransactionResult.ALLOWED)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.ALLOWED, ChangeTrxLimitOperation.INCREASE);
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.INCREASE);
+        }
+
+        if (currentTrxValidity.equals(TransactionResult.PROHIBITED) && feedbackValidity.equals(TransactionResult.MANUAL_PROCESSING)) {
+            changeLimit(transactionHistory.getAmount(), TransactionLimitType.MANUAL, ChangeTrxLimitOperation.INCREASE);
+        }
     }
 }
