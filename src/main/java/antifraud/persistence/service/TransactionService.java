@@ -86,11 +86,7 @@ public class TransactionService {
         var startDate = createTransactionDto.getDate().minusHours(1);
         var endDate = createTransactionDto.getDate();
 
-        var transactions = transactionHistoryRepository
-            .findByDateBetween(startDate, endDate)
-            .stream()
-            .sorted((o1, o2) -> o2.getDate().compareTo(o1.getDate()))
-            .collect(Collectors.toList());
+        var transactions = transactionHistoryRepository.findByDateBetween(startDate, endDate);
 
         var allowedTrx = transactions
             .stream()
@@ -214,18 +210,16 @@ public class TransactionService {
 
     public List<TrxFeedbackResponseDto> getAll() {
         return transactionHistoryRepository
-                .findAll()
+                .findAllByOrderByIdAsc()
                 .stream()
-                .sorted(Comparator.comparing(TransactionHistory::getId))
                 .map(TrxFeedbackResponseDto::fromEntity)
                 .collect(Collectors.toList());
     }
 
     public List<TrxFeedbackResponseDto> getAllByNumber(String number) {
         var responses =  transactionHistoryRepository
-                .findByNumber(number)
+                .findByNumberOrderByIdAsc(number)
                 .stream()
-                .sorted(Comparator.comparing(TransactionHistory::getId))
                 .map(TrxFeedbackResponseDto::fromEntity)
                 .collect(Collectors.toList());
         if (responses.isEmpty()) throw new NoSuchElementException("No trx found for this number");
