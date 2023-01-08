@@ -9,12 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.validation.ValidationException;
-import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 public class SuspiciousIpService {
@@ -43,11 +41,7 @@ public class SuspiciousIpService {
     }
 
     public List<SuspiciousIp> getAll() {
-        return suspiciousIpRepository
-                .findAll()
-                .stream()
-                .sorted(Comparator.comparing(SuspiciousIp::getIp))
-                .collect(Collectors.toList());
+        return suspiciousIpRepository.findAllByOrderByIdAsc();
     }
 
     public Optional<SuspiciousIp> findByIp(String ip) {

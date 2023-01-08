@@ -1,6 +1,5 @@
 package antifraud.persistence.service;
 
-import antifraud.constant.PatternUtils;
 import antifraud.controller.exception.DataExistException;
 import antifraud.dto.request.CreateStolenCardDto;
 import antifraud.persistence.model.StolenCard;
@@ -10,12 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.validation.ValidationException;
-import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 public class StolenCardService {
@@ -45,11 +41,7 @@ public class StolenCardService {
     }
 
     public List<StolenCard> getAll() {
-        return stolenCardRepository
-                .findAll()
-                .stream()
-                .sorted(Comparator.comparing(StolenCard::getId))
-                .collect(Collectors.toList());
+        return stolenCardRepository.findAllByOrderByIdAsc();
     }
 
     public Optional<StolenCard> findByNumber(String number) {
